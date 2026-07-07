@@ -187,7 +187,6 @@ async def socks5_connect_upstream(
     Connect through an upstream SOCKS5 proxy to dst_host:dst_port.
     Returns (reader, writer) for the proxied connection.
     """
-
     # Open TCP connection to the upstream proxy
     up_reader, up_writer = await asyncio.wait_for(
         asyncio.open_connection(proxy.host, proxy.port),
@@ -195,7 +194,7 @@ async def socks5_connect_upstream(
     )
 
     try:
-        # ── Step 1: Greet ──
+        # ── Step 1: Greet (with timeout) ──
         if proxy.username:
             methods = bytes([SOCKS5_VER, 2, AUTH_NO_AUTH, AUTH_USERPASS])
         else:
@@ -204,11 +203,13 @@ async def socks5_connect_upstream(
         up_writer.write(methods)
         await up_writer.drain()
 
-        ver, chosen = await _read_exact(up_reader, 2)
+        ver, chosen = await asyncio.wait_for(
+            _read_exact(up_reader, 2), timeout=connect_timeout
+        )
         if ver != SOCKS5_VER:
             raise RuntimeError(f"Bad SOCKS version from upstream: {ver}")
 
-        # ── Step 2: Authenticate if needed ──
+        # ── Step 2: Authenticate if needed (with timeout) ──
         if chosen == AUTH_USERPASS:
             uname_bytes = proxy.username.encode()
             passwd_bytes = proxy.password.encode()
@@ -217,14 +218,16 @@ async def socks5_connect_upstream(
             up_writer.write(auth_msg)
             await up_writer.drain()
 
-            ver, status = await _read_exact(up_reader, 2)
+            ver, status = await asyncio.wait_for(
+                _read_exact(up_reader, 2), timeout=connect_timeout
+            )
             if status != 0x00:
                 raise RuntimeError(f"Upstream proxy auth failed (status={status})")
 
         elif chosen != AUTH_NO_AUTH:
             raise RuntimeError(f"Upstream proxy rejected no-auth, got method={chosen}")
 
-        # ── Step 3: Send CONNECT request ──
+        # ── Step 3: Send CONNECT request (with timeout) ──
         if isinstance(dst_host, str) and dst_host.count(".") != 4:
             # Domain name
             host_bytes = dst_host.encode()
@@ -240,8 +243,10 @@ async def socks5_connect_upstream(
         up_writer.write(req)
         await up_writer.drain()
 
-        # ── Step 4: Read response ──
-        header = await _read_exact(up_reader, 4)
+        # ── Step 4: Read response (with timeout) ──
+        header = await asyncio.wait_for(
+            _read_exact(up_reader, 4), timeout=connect_timeout
+        )
         if header[1] != REPLY_SUCCESS:
             error_names = {
                 0x01: "general failure",
@@ -258,17 +263,20 @@ async def socks5_connect_upstream(
         # Read the rest of the bind address (atype + addr + port)
         atype = header[3]
         if atype == ATYP_IPV4:
-            await _read_exact(up_reader, 6)
+            await asyncio.wait_for(_read_exact(up_reader, 6), timeout=connect_timeout)
         elif atype == ATYP_DOMAIN:
-            domain_len = await _read_exact(up_reader, 1)
-            await _read_exact(up_reader, domain_len[0] + 2)
+            domain_len = await asyncio.wait_for(_read_exact(up_reader, 1), timeout=connect_timeout)
+            await asyncio.wait_for(_read_exact(up_reader, domain_len[0] + 2), timeout=connect_timeout)
         elif atype == ATYP_IPV6:
-            await _read_exact(up_reader, 18)
+            await asyncio.wait_for(_read_exact(up_reader, 18), timeout=connect_timeout)
 
         return up_reader, up_writer
 
     except Exception:
-        up_writer.close()
+        try:
+            up_writer.close()
+        except Exception:
+            pass
         raise
 
 
