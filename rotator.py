@@ -111,7 +111,7 @@ class ProxyPool:
             return True
         return False
 
-    def rotate_healthy(self, health_check_fn) -> bool:
+    async def rotate_healthy(self, health_check_fn) -> bool:
         """Rotate, skipping dead proxies until a healthy one is found.
         Returns True if a healthy proxy was found, False if all are dead.
         """
@@ -119,7 +119,7 @@ class ProxyPool:
         while attempts < len(self.proxies):
             next_idx = (self._index + 1) % len(self.proxies)
             candidate = self.proxies[next_idx]
-            healthy = health_check_fn(candidate)
+            healthy = await health_check_fn(candidate)
             if healthy:
                 old = self.current.display
                 self._index = next_idx
@@ -136,17 +136,18 @@ class ProxyPool:
         log.error("✗ All %d proxies are dead!", len(self.proxies))
         return False
 
-    def set_working_index(self, health_check_fn) -> bool:
+    async def set_working_index(self, health_check_fn) -> bool:
         """Find the first healthy proxy starting from current index."""
         attempts = 0
         start = self._index
         while attempts < len(self.proxies):
             candidate = self.proxies[start]
-            if health_check_fn(candidate):
-                if start != self._index:
-                    log.info("✅ Found working proxy %s (was at index %d)", candidate.display, self._index)
-                    self._index = start
-                    self._last_rotate = time.monotonic()
+            healthy = await health_check_fn(candidate)
+            if healthy:
+                index_str = "" if start == self._index else f" (was at index {self._index})"
+                self._index = start
+                self._last_rotate = time.monotonic()
+                log.info("✅ Starting with healthy proxy: %s%s", candidate.display, index_str)
                 return True
             else:
                 log.warning("⏭ Proxy %s is dead — testing next", candidate.display)
@@ -426,7 +427,7 @@ async def rotation_loop(pool: ProxyPool, check_interval: float = 5.0,
         if time.monotonic() - pool._last_rotate >= pool.interval:
             if health_check_fn:
                 # health-checked rotation
-                if not pool.rotate_healthy(health_check_fn):
+                if not await pool.rotate_healthy(health_check_fn):
                     log.error("Rotation failed — all proxies dead!")
             else:
                 pool.tick()
@@ -434,10 +435,10 @@ async def rotation_loop(pool: ProxyPool, check_interval: float = 5.0,
         # Periodically re-check current proxy health
         if health_check_fn and time.monotonic() - last_full_check >= health_check_interval:
             last_full_check = time.monotonic()
-            if not health_check_fn(pool.current):
+            if not await health_check_fn(pool.current):
                 log.warning("⚠ Current proxy %s failed periodic health check — rotating",
                             pool.current.display)
-                if not pool.rotate_healthy(health_check_fn):
+                if not await pool.rotate_healthy(health_check_fn):
                     log.error("All proxies dead after periodic check!")
 
 
@@ -596,8 +597,8 @@ async def main():
 
         # On startup: find the first working proxy
         log.info("🔍 Testing proxies for health (timeout: %ds)...", args.health_check_timeout)
-        if pool.set_working_index(health_check_fn):
-            log.info("✅ Starting with healthy proxy: %s", pool.current.display)
+        if await pool.set_working_index(health_check_fn):
+            pass  # set_working_index already logs success
         else:
             log.error("✗ No working proxies found! Starting anyway...")
 
