@@ -1,0 +1,23 @@
+version: "3.8"
+
+services:
+  proxy-rotator:
+    build: .
+    container_name: proxy-rotator
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:18800:18800"  # SOCKS5 proxy (localhost only)
+      - "127.0.0.1:9090:9090"    # Status page (localhost only)
+    command:
+      - python3
+      - rotator.py
+      - --interval
+      - "300"
+      - --listen
+      - "0.0.0.0"
+      - --port
+      - "18800"
+      - --status-port
+      - "9090"
+      - --status-listen
+      - "0.0.0.0"

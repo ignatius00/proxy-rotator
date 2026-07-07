@@ -1,0 +1,11 @@
+# SOCKS5 proxy pool — one per line, format: ip:port:username:password
+31.59.20.176:6754:smkapbjp:sa3vgrvguj7h
+31.56.127.193:7684:smkapbjp:sa3vgrvguj7h
+45.38.107.97:6014:smkapbjp:sa3vgrvguj7h
+198.105.121.200:6462:smkapbjp:sa3vgrvguj7h
+64.137.96.74:6641:smkapbjp:sa3vgrvguj7h
+198.23.243.226:6361:smkapbjp:sa3vgrvguj7h
+2.57.21.2:7239:smkapbjp:sa3vgrvguj7h
+38.154.185.97:6370:smkapbjp:sa3vgrvguj7h
+142.111.67.146:5611:smkapbjp:sa3vgrvguj7h
+191.96.254.138:6185:smkapbjp:sa3vgrvguj7h
